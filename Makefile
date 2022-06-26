@@ -1,9 +1,7 @@
 
 .DEFAULT_GOAL = check
 PYTHON_INTERPRETER = python3
-PROJECT_NAME = corona-classification
-DATASET = ufpel
-ITERATIONS = 20
+PROJECT_NAME = deep-tweezer
 ################################################################################
 # COMMANDS                                                                     #
 ################################################################################
@@ -34,12 +32,12 @@ dirs:	## Make command to create folder for results dataframes.
 	@echo "----> Done"
 
 
-grid-search: ##Method to grid-search between all classification and oversampling algorithms
+simulation: ##Method to grid-search between all classification and oversampling algorithms
 	@echo "---> Running Grid Search on dataset"
 	@$(PYTHON_INTERPRETER) src/api/grid_search.py --iterations $(ITERATIONS) --dataset $(DATASET)
 
 
-permutation: ##Method to grid-search between all classification and oversampling algorithms
+learning: ##Method to grid-search between all classification and oversampling algorithms
 	@echo "---> Running Grid Search on dataset"
 	@$(PYTHON_INTERPRETER) src/api/permutation.py --dataset $(DATASET)
 
