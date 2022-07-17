@@ -59,13 +59,15 @@ class TweezerEnv(gym.Env):
         "render_fps": 30,
     }
 
-    def __init__(self, render_mode: Optional[str] = None, g=10.0):
-        self.max_speed = 8
-        self.max_torque = 2.0
+    def __init__(self, render_mode: Optional[str] = None, T=295.0):
+        self.max_voltage = 10.0
         self.dt = 0.05
-        self.g = g
+        self.a = 10**-6
+        self.eta = 9.85*(10**-4)
+        self.gamma = self.__gamma__(T)
         self.m = 1.0
-        self.l = 1.0
+        self.k = 10**-3
+        self.D = kB*T/self.gamma
 
         self.render_mode = render_mode
         self.renderer = Renderer(self.render_mode, self._render)
@@ -84,10 +86,20 @@ class TweezerEnv(gym.Env):
         )
         self.observation_space = spaces.Box(low=-high, high=high, dtype=np.float32)
 
+    def __gamma__(self):
+        return 6*np.pi*self.a*self.eta
+
+    def __white_noite__(self):
+        D = self.D 
+        gamma = self.gamma
+        std_noise = self.std_noise
+        return gamma*np.sqrt(2*D)*np.random.normal(0, std_noise)
+
     def step(self, u):
         th, thdot = self.state  # th := theta
 
-        g = self.g
+        k = self.k
+        gamma = self.__gamma__(T)
         m = self.m
         l = self.l
         dt = self.dt
