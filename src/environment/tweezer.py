@@ -60,6 +60,7 @@ class TweezerEnv(gym.Env):
     }
 
     def __init__(self, render_mode: Optional[str] = None, T=295.0):
+        kB = 1.380649*(10**-23) 
         self.max_voltage = 10.0
         self.dt = 0.05
         self.a = 10**-6
@@ -68,6 +69,10 @@ class TweezerEnv(gym.Env):
         self.m = 1.0
         self.k = 10**-3
         self.D = kB*T/self.gamma
+        self.std_noise = 2
+        self.q = 
+        self.d = 50*(10**-3)
+
 
         self.render_mode = render_mode
         self.renderer = Renderer(self.render_mode, self._render)
@@ -99,7 +104,7 @@ class TweezerEnv(gym.Env):
         th, thdot = self.state  # th := theta
 
         k = self.k
-        gamma = self.__gamma__(T)
+        gamma = self.gamma
         m = self.m
         l = self.l
         dt = self.dt
