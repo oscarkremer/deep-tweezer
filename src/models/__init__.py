@@ -1,19 +1,8 @@
-from .classification import *
+from .DDPG import DDPG
 from .sampling import *
 from .grid_search import grid_search
 
 
 __all__ = [
-    'grid_search',
-    'AdaBoost',
-    'DecisionTree',
-    'ExtraTrees',
-    'GradientBoosting',
-    'MLP',
-    'RandomForest',
-    'SVM',
-    'Adasyn',
-    'BorderLine',
-    'KNNSmote',
-    'Smote'
+    'DDPG'
 ]
