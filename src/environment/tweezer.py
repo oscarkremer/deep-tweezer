@@ -59,10 +59,20 @@ class TweezerEnv(gym.Env):
         "render_fps": 30,
     }
 
-    def __init__(self, render_mode: Optional[str] = None, T=295.0):
-        kB = 1.380649*(10**-23) 
-        self.max_voltage = 10.0
-        self.dt = 0.05
+    def __init__(self, render_mode: Optional[str] = None):
+        avogrado = 6.02*(10**23) # 1/mol
+        kB = 1.380649*(10**-23) # m^2 kg /(s^2 K)
+        self.m_gas_molecule = 0.02897/avogrado  # kg
+        self.max_voltage = 10.0 # V
+        self.m = 1.14*(10**-18) # kg
+        self.R = 50*(10**-9) # m
+        self.T = 273.5 + 20
+        self.Q = 2*(10**4)*(1.6*(10**-19))
+        self.omega_0 = 2*np.pi*150*(10**3) # rad/s
+        self.gamma_th = 
+        self.gamma_rad = 
+        self.gamma_fb = 
+        self.dt = 0.001 
         self.a = 10**-6
         self.eta = 9.85*(10**-4)
         self.gamma = self.__gamma__(T)
