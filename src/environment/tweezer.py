@@ -108,18 +108,19 @@ class TweezerEnv(gym.Env):
         gamma = self.gamma
         omega_0 = self.omega_0
         m = self.m
-        
-        u = np.clip(u, -self.max_torque, self.max_torque)[0]
+        Q = self.Q 
+        d = self.d 
+
+        u = np.clip(u, -self.max_voltage, self.max_voltage)[0]
+        eletric_F = Q*u/d
         self.last_u = u  # for rendering
-        costs = angle_normalize(th) ** 2 + 0.1 * thdot**2 + 0.001 * (u**2)
-
-        newthdot = thdot + (3 * g / (2 * l) * np.sin(th) + 3.0 / (m * l**2) * u) * dt
-        newthdot = np.clip(newthdot, -self.max_speed, self.max_speed)
-        newth = th + newthdot * dt
-
-        self.state = np.array([newth, newthdot])
-        self.renderer.render_step()
-        return self._get_obs(), -costs, False, {}
+        costs = -100*ydot**2 -u**2
+        new_y_ddot = (1/m)*(u + self.white_noise()) - np.power(self.omega_0, 2)*y - gamma*ydot
+        new_y_dot = ydot + new_y_ddot*dt
+        new_y = y + new_y_dot*dt 
+        self.state = np.array([new_y, new_y_dot])
+#        self.renderer.render_step()
+        return self._get_obs(), costs, False, {}
 
     def reset(
         self,
@@ -129,10 +130,9 @@ class TweezerEnv(gym.Env):
         options: Optional[dict] = None
     ):
         super().reset(seed=seed)
-        high = np.array([np.pi, 1])
+        high = np.array([0, 0])
         self.state = self.np_random.uniform(low=-high, high=high)
         self.last_u = None
-
         self.renderer.reset()
         self.renderer.render_step()
         if not return_info:
@@ -141,8 +141,8 @@ class TweezerEnv(gym.Env):
             return self._get_obs(), {}
 
     def _get_obs(self):
-        theta, thetadot = self.state
-        return np.array([np.cos(theta), np.sin(theta), thetadot], dtype=np.float32)
+        y, ydot = self.state
+        return np.array([y, ydot], dtype=np.float32)
 
     def render(self, mode="human"):
         if self.render_mode is not None:

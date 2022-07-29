@@ -59,17 +59,28 @@ class TweezerEnv(gym.Env):
         "render_fps": 30,
     }
 
-    def __init__(self, render_mode: Optional[str] = None, T=295.0):
-        kB = 1.380649*(10**-23) 
-        self.max_voltage = 10.0
-        self.dt = 0.05
-        self.a = 10**-6
-        self.eta = 9.85*(10**-4)
-        self.gamma = self.__gamma__(T)
-        self.m = 1.0
-        self.k = 10**-3
-        self.D = kB*T/self.gamma
-        self.std_noise = 
+    def __init__(self, render_mode: Optional[str] = None):
+        avogrado = 6.02*(10**23) # 1/mol
+        kB = 1.380649*(10**-23) # m^2 kg /(s^2 K)
+        c = 3*(10**8) # m/s
+        self.m_gas_molecule = 0.02897/avogrado  # kg
+        self.max_voltage = 10.0 # V
+        self.m = 1.14*(10**-18) # kg
+        self.d = 11*(10**-3) # m
+        self.R = 50*(10**-9) # m
+        self.T = 273.5 + 20 # K
+        self.P_scat = 3.53*(10**-6) # W
+        self.pressure = 10**-6 # Pa
+        self.Q = 2*(10**4)*(1.6*(10**-19)) # Coulomb
+        self.gas_velocity = np.sqrt((3*kB*self.T/self.m_gas_molecule)) # m/s
+        self.omega_0 = 2*np.pi*150*(10**3) # rad/s
+        self.gamma_th = self.P_scat/(self.m*np.power(c, 2)) # 1/s
+        self.gamma_rad = 15.8*(np.power(self.R, 2)*self.pressure)/(self.m*self.gas_velocity) # 1/s
+        self.gamma_fb = 2*np.pi*269.9 # 1/s
+        self.gamma = self.gamma_th + self.gamma_rad + self.gamma_fb # 1/s 
+        self.dt = 0.001 # s
+        self.noise_amplitude = np.sqrt(2*kB*self.T*self.gamma) # N
+        self.std_noise = 2 # adimensional
 
 
         self.render_mode = render_mode
@@ -85,39 +96,31 @@ class TweezerEnv(gym.Env):
         #   or normalised as max_torque == 2 by default. Ignoring the issue here as the default settings are too old
         #   to update to follow the openai gym api
         self.action_space = spaces.Box(
-            low=-self.max_torque, high=self.max_torque, shape=(1,), dtype=np.float32
+            low=-self.max_voltage, high=self.max_voltage, shape=(1,), dtype=np.float32
         )
-        self.observation_space = spaces.Box(low=-high, high=high, dtype=np.float32)
+        self.observation_space = spaces.Box(shape=(2,), dtype=np.float32)
 
-    def __gamma__(self):
-        return 6*np.pi*self.a*self.eta
-
-    def __white_noite__(self):
-        D = self.D 
-        gamma = self.gamma
-        std_noise = self.std_noise
-        return gamma*np.sqrt(2*D)*np.random.normal(0, std_noise)
+    def white_noite(self):
+        return self.noise_amplitude*np.random.normal(0, self.std_noise)
 
     def step(self, u):
-        th, thdot = self.state  # th := theta
-
-        k = self.k
+        y, ydot = self.state  # th := theta
         gamma = self.gamma
+        omega_0 = self.omega_0
         m = self.m
-        l = self.l
-        dt = self.dt
+        Q = self.Q 
+        d = self.d 
 
-        u = np.clip(u, -self.max_torque, self.max_torque)[0]
+        u = np.clip(u, -self.max_voltage, self.max_voltage)[0]
+        eletric_F = Q*u/d
         self.last_u = u  # for rendering
-        costs = angle_normalize(th) ** 2 + 0.1 * thdot**2 + 0.001 * (u**2)
-
-        newthdot = thdot + (3 * g / (2 * l) * np.sin(th) + 3.0 / (m * l**2) * u) * dt
-        newthdot = np.clip(newthdot, -self.max_speed, self.max_speed)
-        newth = th + newthdot * dt
-
-        self.state = np.array([newth, newthdot])
-        self.renderer.render_step()
-        return self._get_obs(), -costs, False, {}
+        costs = -100*ydot**2 -u**2
+        new_y_ddot = (1/m)*(u + self.white_noise()) - np.power(self.omega_0, 2)*y - gamma*ydot
+        new_y_dot = ydot + new_y_ddot*dt
+        new_y = y + new_y_dot*dt 
+        self.state = np.array([new_y, new_y_dot])
+#        self.renderer.render_step()
+        return self._get_obs(), costs, False, {}
 
     def reset(
         self,
@@ -127,7 +130,7 @@ class TweezerEnv(gym.Env):
         options: Optional[dict] = None
     ):
         super().reset(seed=seed)
-        high = np.array([np.pi, 1])
+        high = np.array([0, 0])
         self.state = self.np_random.uniform(low=-high, high=high)
         self.last_u = None
 
@@ -139,8 +142,8 @@ class TweezerEnv(gym.Env):
             return self._get_obs(), {}
 
     def _get_obs(self):
-        theta, thetadot = self.state
-        return np.array([np.cos(theta), np.sin(theta), thetadot], dtype=np.float32)
+        y, ydot = self.state
+        return np.array([y, ydot], dtype=np.float32)
 
     def render(self, mode="human"):
         if self.render_mode is not None:
@@ -244,7 +247,3 @@ class TweezerEnv(gym.Env):
             pygame.display.quit()
             pygame.quit()
             self.isopen = False
-
-
-def angle_normalize(x):
-    return ((x + np.pi) % (2 * np.pi)) - np.pi
