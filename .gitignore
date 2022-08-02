@@ -1,4 +1,4 @@
-src.egg-info
+src.egg-info/*
 data/
 .DS_Store
 *.pyc
