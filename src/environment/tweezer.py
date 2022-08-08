@@ -4,9 +4,10 @@ import gym
 from gym import spaces
 from gym.error import DependencyNotInstalled
 from gym.utils.renderer import Renderer
+from typing import Optional
 
 
-class TweezerEnv(gym.Env):
+class Tweezer(gym.Env):
     """
        ### Description
     The inverted pendulum swingup problem is based on the classic problem in control theory.
@@ -68,39 +69,35 @@ class TweezerEnv(gym.Env):
         self.m = 1.14*(10**-18) # kg
         self.d = 11*(10**-3) # m
         self.R = 50*(10**-9) # m
-        self.T = 273.5 + 20 # K
-        self.P_scat = 3.53*(10**-6) # W
-        self.pressure = 10**-6 # Pa
-        self.Q = 2*(10**4)*(1.6*(10**-19)) # Coulomb
+        self.T = 273.5 + 25 # K
+        self.pressure = 10**3 # Pa
+        self.Q = 2*(10**4)*(1.6*(10**-19))*np.power(self.R/(2.5*10**-6), 3) # Coulomb
         self.gas_velocity = np.sqrt((3*kB*self.T/self.m_gas_molecule)) # m/s
         self.omega_0 = 2*np.pi*150*(10**3) # rad/s
-        self.gamma_th = self.P_scat/(self.m*np.power(c, 2)) # 1/s
-        self.gamma_rad = 15.8*(np.power(self.R, 2)*self.pressure)/(self.m*self.gas_velocity) # 1/s
-        self.gamma_fb = 2*np.pi*269.9 # 1/s
-        self.gamma = self.gamma_th + self.gamma_rad + self.gamma_fb # 1/s 
-        self.dt = 0.001 # s
+        self.gamma = 15.8*(np.power(self.R, 2)*self.pressure)/self.gas_velocity # kg/s
+        self.dt = 5*10**-7 # s
         self.noise_amplitude = np.sqrt(2*kB*self.T*self.gamma) # N
-        self.std_noise = 2 # adimensional
-
-
+        self.std_noise = 1 # adimensional
         self.render_mode = render_mode
         self.renderer = Renderer(self.render_mode, self._render)
-
         self.screen_dim = 500
         self.screen = None
         self.clock = None
         self.isopen = True
 
-        high = np.array([1.0, 1.0, self.max_speed], dtype=np.float32)
+        high = np.array([10**-3, 1000], dtype=np.float32)
         # This will throw a warning in tests/envs/test_envs in utils/env_checker.py as the space is not symmetric
         #   or normalised as max_torque == 2 by default. Ignoring the issue here as the default settings are too old
         #   to update to follow the openai gym api
         self.action_space = spaces.Box(
             low=-self.max_voltage, high=self.max_voltage, shape=(1,), dtype=np.float32
         )
-        self.observation_space = spaces.Box(shape=(2,), dtype=np.float32)
+        self.observation_space = spaces.Box(shape=(2,), 
+                                            low=-high, 
+                                            high=high, 
+                                            dtype=np.float32)
 
-    def __white_noite__(self):
+    def white_noise(self):
         return self.noise_amplitude*np.random.normal(0, self.std_noise)
 
     def step(self, u):
@@ -110,15 +107,17 @@ class TweezerEnv(gym.Env):
         m = self.m
         Q = self.Q 
         d = self.d 
-
-        u = np.clip(u, -self.max_voltage, self.max_voltage)[0]
+        u = np.clip(u, -self.max_voltage, self.max_voltage)
         eletric_F = Q*u/d
         self.last_u = u  # for rendering
-        costs = -100*ydot**2 -u**2
-        new_y_ddot = (1/m)*(u + self.white_noise()) - np.power(self.omega_0, 2)*y - gamma*ydot
-        new_y_dot = ydot + new_y_ddot*dt
-        new_y = y + new_y_dot*dt 
-        self.state = np.array([new_y, new_y_dot])
+        costs = -ydot**2
+        random_force = self.white_noise()
+        a_i = (1/m)*(u + random_force) - np.power(self.omega_0, 2)*y - gamma*ydot
+        v_i_half = ydot + a_i*self.dt
+        x_i_plus = y + v_i_half*self.dt
+        a_i_plus = (1/m)*(eletric_F + random_force) - np.power(self.omega_0, 2)*x_i_plus - gamma*v_i_half
+        v_i_three_half = v_i_half + a_i_plus*self.dt
+        self.state = np.array([x_i_plus, v_i_three_half])
 #        self.renderer.render_step()
         return self._get_obs(), costs, False, {}
 
@@ -130,7 +129,7 @@ class TweezerEnv(gym.Env):
         options: Optional[dict] = None
     ):
         super().reset(seed=seed)
-        high = np.array([0, 0])
+        high = np.array([20*10**-9, 0.01])
         self.state = self.np_random.uniform(low=-high, high=high)
         self.last_u = None
         self.renderer.reset()
@@ -246,7 +245,3 @@ class TweezerEnv(gym.Env):
             pygame.display.quit()
             pygame.quit()
             self.isopen = False
-
-
-def angle_normalize(x):
-    return ((x + np.pi) % (2 * np.pi)) - np.pi

@@ -1,8 +1,7 @@
 from .DDPG import DDPG
-from .sampling import *
-from .grid_search import grid_search
-
+from .RBF import rbfprojector
 
 __all__ = [
-    'DDPG'
+    'DDPG', 
+    'RBF'
 ]
