@@ -65,7 +65,7 @@ class Tweezer(gym.Env):
         kB = 1.380649*(10**-23) # m^2 kg /(s^2 K)
         c = 3*(10**8) # m/s
         self.m_gas_molecule = 0.02897/avogrado  # kg
-        self.max_voltage = 10.0 # V
+        self.max_voltage = 100 # V
         self.m = 1.14*(10**-18) # kg
         self.d = 11*(10**-3) # m
         self.R = 50*(10**-9) # m
@@ -101,6 +101,7 @@ class Tweezer(gym.Env):
         return self.noise_amplitude*np.random.normal(0, self.std_noise)
 
     def step(self, u):
+        terminal = False
         y, ydot = self.state  # th := theta
         gamma = self.gamma
         omega_0 = self.omega_0
@@ -110,16 +111,18 @@ class Tweezer(gym.Env):
         u = np.clip(u, -self.max_voltage, self.max_voltage)
         eletric_F = Q*u/d
         self.last_u = u  # for rendering
-        costs = -ydot**2
-        random_force = self.white_noise()
-        a_i = (1/m)*(u + random_force) - np.power(self.omega_0, 2)*y - gamma*ydot
+        a_i = (1/m)*(eletric_F + self.white_noise()) - np.power(self.omega_0, 2)*y - gamma*ydot
         v_i_half = ydot + a_i*self.dt
         x_i_plus = y + v_i_half*self.dt
-        a_i_plus = (1/m)*(eletric_F + random_force) - np.power(self.omega_0, 2)*x_i_plus - gamma*v_i_half
+        a_i_plus = (1/m)*(eletric_F + self.white_noise()) - np.power(self.omega_0, 2)*x_i_plus - gamma*v_i_half
         v_i_three_half = v_i_half + a_i_plus*self.dt
         self.state = np.array([x_i_plus, v_i_three_half])
+        costs = 10**16*x_i_plus**2+10**4*v_i_three_half**2
 #        self.renderer.render_step()
-        return self._get_obs(), costs, False, {}
+        if abs(x_i_plus) > 10**-7:
+            terminal = True
+            costs = 10000
+        return self._get_obs(), -costs, terminal, u, {}
 
     def reset(
         self,
