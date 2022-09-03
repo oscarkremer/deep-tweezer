@@ -1,66 +1,35 @@
+
 from os import path
 import numpy as np
 import gym
-from gym import spaces
 from gym.error import DependencyNotInstalled
 from gym.utils.renderer import Renderer
+from gym import spaces
 from typing import Optional
-
 
 class Tweezer(gym.Env):
     """
        ### Description
-    The inverted pendulum swingup problem is based on the classic problem in control theory.
-    The system consists of a pendulum attached at one end to a fixed point, and the other end being free.
-    The pendulum starts in a random position and the goal is to apply torque on the free end to swing it
-    into an upright position, with its center of gravity right above the fixed point.
-    The diagram below specifies the coordinate system used for the implementation of the pendulum's
-    dynamic equations.
-    ![Pendulum Coordinate System](./diagrams/pendulum.png)
+        To be implemented: insert here description about the state variables
     -  `x-y`: cartesian coordinates of the pendulum's end in meters.
     - `theta` : angle in radians.
     - `tau`: torque in `N m`. Defined as positive _counter-clockwise_.
-    ### Action Space
-    The action is a `ndarray` with shape `(1,)` representing the torque applied to free end of the pendulum.
-    | Num | Action | Min  | Max |
-    |-----|--------|------|-----|
-    | 0   | Torque | -2.0 | 2.0 |
-    ### Observation Space
-    The observation is a `ndarray` with shape `(3,)` representing the x-y coordinates of the pendulum's free
-    end and its angular velocity.
-    | Num | Observation      | Min  | Max |
-    |-----|------------------|------|-----|
-    | 0   | x = cos(theta)   | -1.0 | 1.0 |
-    | 1   | y = sin(angle)   | -1.0 | 1.0 |
-    | 2   | Angular Velocity | -8.0 | 8.0 |
-    ### Rewards
-    The reward function is defined as:
-    *r = -(theta<sup>2</sup> + 0.1 * theta_dt<sup>2</sup> + 0.001 * torque<sup>2</sup>)*
-    where `$\theta$` is the pendulum's angle normalized between *[-pi, pi]* (with 0 being in the upright position).
-    Based on the above equation, the minimum reward that can be obtained is
-    *-(pi<sup>2</sup> + 0.1 * 8<sup>2</sup> + 0.001 * 2<sup>2</sup>) = -16.2736044*,
-    while the maximum reward is zero (pendulum is upright with zero velocity and no torque applied).
-    ### Starting State
-    The starting state is a random angle in *[-pi, pi]* and a random angular velocity in *[-1,1]*.
-    ### Episode Termination
-    The episode terminates at 200 time steps.
-    ### Arguments
-    - `g`: acceleration of gravity measured in *(m s<sup>-2</sup>)* used to calculate the pendulum dynamics.
-      The default value is g = 10.0 .
-    ```
-    gym.make('Pendulum-v1', g=9.81)
-    ```
-    ### Version History
-    * v1: Simplify the math equations, no difference in behavior.
-    * v0: Initial versions release (1.0.0)
+    Action Space
+    
+    Observation Space
+    Rewards
+    Starting State
+    Episode Termination
+    Arguments
+    Version History
     """
-
+    
     metadata = {
         "render_modes": ["human", "rgb_array", "single_rgb_array"],
         "render_fps": 30,
     }
 
-    def __init__(self, render_mode: Optional[str] = None):
+    def __init__(self, pressure=10**1, render_mode: Optional[str] = None):
         avogrado = 6.02*(10**23) # 1/mol
         kB = 1.380649*(10**-23) # m^2 kg /(s^2 K)
         c = 3*(10**8) # m/s
@@ -70,14 +39,15 @@ class Tweezer(gym.Env):
         self.d = 11*(10**-3) # m
         self.R = 50*(10**-9) # m
         self.T = 273.5 + 25 # K
-        self.pressure = 10**3 # Pa
-        self.Q = 2*(10**4)*(1.6*(10**-19))*np.power(self.R/(2.5*10**-6), 3) # Coulomb
+        self.pressure = pressure # Pa
+        self.Q = 2*(10**4)*(1.6*(10**-19))*np.power(self.R/(2.5*10**-6), 2) # Coulomb
         self.gas_velocity = np.sqrt((3*kB*self.T/self.m_gas_molecule)) # m/s
-        self.omega_0 = 2*np.pi*150*(10**3) # rad/s
-        self.gamma = 15.8*(np.power(self.R, 2)*self.pressure)/self.gas_velocity # kg/s
-        self.dt = 5*10**-7 # s
-        self.noise_amplitude = np.sqrt(2*kB*self.T*self.gamma) # N
-        self.std_noise = 1 # adimensional
+        self.omega_0x = 2*np.pi*150*(10**3) # rad/s
+        self.omega_0y = 2*np.pi*150*(10**3) # rad/s
+        self.gamma = 15.8*(np.power(self.R, 2)*self.pressure)/(self.gas_velocity*self.m) # kg/s
+        self.dt = 2*10**-8 # s
+        self.noise_amplitude = np.sqrt(2*kB*self.T*self.m*self.gamma) # N
+        self.std_noise = 100# adimensional
         self.render_mode = render_mode
         self.renderer = Renderer(self.render_mode, self._render)
         self.screen_dim = 500
@@ -85,14 +55,11 @@ class Tweezer(gym.Env):
         self.clock = None
         self.isopen = True
 
-        high = np.array([10**-3, 1000], dtype=np.float32)
-        # This will throw a warning in tests/envs/test_envs in utils/env_checker.py as the space is not symmetric
-        #   or normalised as max_torque == 2 by default. Ignoring the issue here as the default settings are too old
-        #   to update to follow the openai gym api
+        high = np.array([10**-3, 10**-3, 1, 1, 100, 100], dtype=np.float32)
         self.action_space = spaces.Box(
             low=-self.max_voltage, high=self.max_voltage, shape=(1,), dtype=np.float32
         )
-        self.observation_space = spaces.Box(shape=(2,), 
+        self.observation_space = spaces.Box(shape=(6,), 
                                             low=-high, 
                                             high=high, 
                                             dtype=np.float32)
@@ -102,26 +69,36 @@ class Tweezer(gym.Env):
 
     def step(self, u):
         terminal = False
-        y, ydot = self.state  # th := theta
+        x, y, xdot, ydot, xddot, yddot = self.state  # th := theta
         gamma = self.gamma
-        omega_0 = self.omega_0
+        omega_0x = self.omega_0x
+        omega_0y = self.omega_0y
         m = self.m
         Q = self.Q 
         d = self.d 
+        dt = self.dt
         u = np.clip(u, -self.max_voltage, self.max_voltage)
         eletric_F = Q*u/d
         self.last_u = u  # for rendering
-        a_i = (1/m)*(eletric_F + self.white_noise()) - np.power(self.omega_0, 2)*y - gamma*ydot
-        v_i_half = ydot + a_i*self.dt
-        x_i_plus = y + v_i_half*self.dt
-        a_i_plus = (1/m)*(eletric_F + self.white_noise()) - np.power(self.omega_0, 2)*x_i_plus - gamma*v_i_half
-        v_i_three_half = v_i_half + a_i_plus*self.dt
-        self.state = np.array([x_i_plus, v_i_three_half])
-        costs = 10**16*x_i_plus**2+10**4*v_i_three_half**2
+        x_i_plus = x + xdot*dt+0.5*dt*dt*xddot
+        xddot_i_plus = (1/m)*(eletric_F + self.white_noise()) - np.power(omega_0x, 2)*x_i_plus - gamma*xdot
+        xdot_i_plus = xdot + 0.5*(xddot_i_plus+xddot)*dt
+        y_i_plus = y + ydot*dt+0.5*dt*dt*yddot
+        yddot_i_plus = (1/m)*(eletric_F + self.white_noise()) - np.power(omega_0y, 2)*y_i_plus - gamma*ydot
+        ydot_i_plus = ydot + 0.5*(yddot_i_plus + yddot)*dt
+    
+        self.state = np.array([x_i_plus, 
+                               y_i_plus, 
+                               xdot_i_plus, 
+                               ydot_i_plus, 
+                               xddot_i_plus,
+                               yddot_i_plus])
+        #costs = (x_i_plus/10**-7)**2+(v_i_three_half/0.1)**2
 #        self.renderer.render_step()
-        if abs(x_i_plus) > 10**-7:
-            terminal = True
-            costs = 10000
+        costs = 0
+#        if abs(x_i_plus) > 10**-7 or abs(v_i_three_half) > 0.1:
+#            terminal = True
+#            costs = abs(x_i_plus+v_i_three_half)
         return self._get_obs(), -costs, terminal, u, {}
 
     def reset(
@@ -132,7 +109,7 @@ class Tweezer(gym.Env):
         options: Optional[dict] = None
     ):
         super().reset(seed=seed)
-        high = np.array([20*10**-9, 0.01])
+        high = np.array([20*10**-8, 20*10**-8, 0.0001, 0.0001, 0, 0])
         self.state = self.np_random.uniform(low=-high, high=high)
         self.last_u = None
         self.renderer.reset()
@@ -143,108 +120,14 @@ class Tweezer(gym.Env):
             return self._get_obs(), {}
 
     def _get_obs(self):
-        y, ydot = self.state
-        return np.array([y, ydot], dtype=np.float32)
+        x, y, xdot, ydot, xddot, yddot = self.state
+        return np.array([y, x, xdot, ydot, xddot, yddot], dtype=np.float32)
 
     def render(self, mode="human"):
-        if self.render_mode is not None:
-            return self.renderer.get_renders()
-        else:
-            return self._render(mode)
+        pass
 
     def _render(self, mode="human"):
-        assert mode in self.metadata["render_modes"]
-        try:
-            import pygame
-            from pygame import gfxdraw
-        except ImportError:
-            raise DependencyNotInstalled(
-                "pygame is not installed, run `pip install gym[classic_control]`"
-            )
-
-        if self.screen is None:
-            pygame.init()
-            if mode == "human":
-                pygame.display.init()
-                self.screen = pygame.display.set_mode(
-                    (self.screen_dim, self.screen_dim)
-                )
-            else:  # mode in {"rgb_array", "single_rgb_array"}
-                self.screen = pygame.Surface((self.screen_dim, self.screen_dim))
-        if self.clock is None:
-            self.clock = pygame.time.Clock()
-
-        self.surf = pygame.Surface((self.screen_dim, self.screen_dim))
-        self.surf.fill((255, 255, 255))
-
-        bound = 2.2
-        scale = self.screen_dim / (bound * 2)
-        offset = self.screen_dim // 2
-
-        rod_length = 1 * scale
-        rod_width = 0.2 * scale
-        l, r, t, b = 0, rod_length, rod_width / 2, -rod_width / 2
-        coords = [(l, b), (l, t), (r, t), (r, b)]
-        transformed_coords = []
-        for c in coords:
-            c = pygame.math.Vector2(c).rotate_rad(self.state[0] + np.pi / 2)
-            c = (c[0] + offset, c[1] + offset)
-            transformed_coords.append(c)
-        gfxdraw.aapolygon(self.surf, transformed_coords, (204, 77, 77))
-        gfxdraw.filled_polygon(self.surf, transformed_coords, (204, 77, 77))
-
-        gfxdraw.aacircle(self.surf, offset, offset, int(rod_width / 2), (204, 77, 77))
-        gfxdraw.filled_circle(
-            self.surf, offset, offset, int(rod_width / 2), (204, 77, 77)
-        )
-
-        rod_end = (rod_length, 0)
-        rod_end = pygame.math.Vector2(rod_end).rotate_rad(self.state[0] + np.pi / 2)
-        rod_end = (int(rod_end[0] + offset), int(rod_end[1] + offset))
-        gfxdraw.aacircle(
-            self.surf, rod_end[0], rod_end[1], int(rod_width / 2), (204, 77, 77)
-        )
-        gfxdraw.filled_circle(
-            self.surf, rod_end[0], rod_end[1], int(rod_width / 2), (204, 77, 77)
-        )
-
-        fname = path.join(path.dirname(__file__), "assets/clockwise.png")
-        img = pygame.image.load(fname)
-        if self.last_u is not None:
-            scale_img = pygame.transform.smoothscale(
-                img,
-                (scale * np.abs(self.last_u) / 2, scale * np.abs(self.last_u) / 2),
-            )
-            is_flip = bool(self.last_u > 0)
-            scale_img = pygame.transform.flip(scale_img, is_flip, True)
-            self.surf.blit(
-                scale_img,
-                (
-                    offset - scale_img.get_rect().centerx,
-                    offset - scale_img.get_rect().centery,
-                ),
-            )
-
-        # drawing axle
-        gfxdraw.aacircle(self.surf, offset, offset, int(0.05 * scale), (0, 0, 0))
-        gfxdraw.filled_circle(self.surf, offset, offset, int(0.05 * scale), (0, 0, 0))
-
-        self.surf = pygame.transform.flip(self.surf, False, True)
-        self.screen.blit(self.surf, (0, 0))
-        if mode == "human":
-            pygame.event.pump()
-            self.clock.tick(self.metadata["render_fps"])
-            pygame.display.flip()
-
-        else:  # mode == "rgb_array":
-            return np.transpose(
-                np.array(pygame.surfarray.pixels3d(self.screen)), axes=(1, 0, 2)
-            )
+         pass
 
     def close(self):
-        if self.screen is not None:
-            import pygame
-
-            pygame.display.quit()
-            pygame.quit()
-            self.isopen = False
+        pass

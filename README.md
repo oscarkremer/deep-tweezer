@@ -16,6 +16,12 @@ Use the package manager [pip](https://pip.pypa.io/en/stable/) to install pymento
 make install
 ```
 
+If you are not using macOS or a Linux distribution OS run:
+
+```bash
+conda env create -q -f environment.yml --name $(PROJECT_NAME) > /dev/null
+```
+
 ## Usage
 
 ```bash
