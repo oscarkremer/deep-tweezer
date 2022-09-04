@@ -121,7 +121,7 @@ class Tweezer(gym.Env):
 
     def _get_obs(self):
         x, y, xdot, ydot, xddot, yddot = self.state
-        return np.array([y, x, xdot, ydot, xddot, yddot], dtype=np.float32)
+        return np.array([x, y, xdot, ydot, xddot, yddot], dtype=np.float32)
 
     def render(self, mode="human"):
         pass
