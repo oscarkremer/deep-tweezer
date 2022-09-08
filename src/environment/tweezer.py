@@ -29,32 +29,43 @@ class Tweezer(gym.Env):
         "render_fps": 30,
     }
 
-    def __init__(self, pressure=10**1, render_mode: Optional[str] = None):
+    def __init__(self, 
+                 pressure=10**1, 
+                 m=1.14*(10**-18),
+                 d = 11*(10**-3),
+                 R = 50*(10**-9),
+                 max_voltage=10,
+                 Q=1.2800000000000007e-18,
+                 fx=150*10**3,
+                 fy=150*10**3,
+                 dt=2*10**-8,
+                 std_noise=100,
+                 render_mode: Optional[str] = None):
         avogrado = 6.02*(10**23) # 1/mol
         kB = 1.380649*(10**-23) # m^2 kg /(s^2 K)
         c = 3*(10**8) # m/s
-        self.m_gas_molecule = 0.02897/avogrado  # kg
-        self.max_voltage = 100 # V
-        self.m = 1.14*(10**-18) # kg
-        self.d = 11*(10**-3) # m
-        self.R = 50*(10**-9) # m
+        air_mol_mass = 0.02897
+        self.m_gas_molecule = air_mol_mass/avogrado  # kg
+        self.m = m # kg
+        self.d = d # m
+        self.R = R # m
+        self.max_voltage = max_voltage # V
         self.T = 273.5 + 25 # K
         self.pressure = pressure # Pa
-        self.Q = 2*(10**4)*(1.6*(10**-19))*np.power(self.R/(2.5*10**-6), 2) # Coulomb
+        self.Q = Q # Coulomb
         self.gas_velocity = np.sqrt((3*kB*self.T/self.m_gas_molecule)) # m/s
-        self.omega_0x = 2*np.pi*150*(10**3) # rad/s
-        self.omega_0y = 2*np.pi*150*(10**3) # rad/s
+        self.omega_0x = 2*np.pi*fx # rad/s
+        self.omega_0y = 2*np.pi*fy # rad/s
         self.gamma = 15.8*(np.power(self.R, 2)*self.pressure)/(self.gas_velocity*self.m) # kg/s
-        self.dt = 2*10**-8 # s
+        self.dt = dt# s
         self.noise_amplitude = np.sqrt(2*kB*self.T*self.m*self.gamma) # N
-        self.std_noise = 100# adimensional
+        self.std_noise = std_noise # adimensional
         self.render_mode = render_mode
         self.renderer = Renderer(self.render_mode, self._render)
         self.screen_dim = 500
         self.screen = None
         self.clock = None
         self.isopen = True
-
         high = np.array([10**-3, 10**-3, 1, 1, 100, 100], dtype=np.float32)
         self.action_space = spaces.Box(
             low=-self.max_voltage, high=self.max_voltage, shape=(1,), dtype=np.float32
